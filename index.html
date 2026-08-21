@@ -10,15 +10,16 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
-    --ball: #d7f34c;      /* 피클볼 공 색 */
+    --ball: #d7f34c;
     --ball-dark: #a9c72a;
-    --court: #14532d;     /* 실외 코트 그린 */
+    --court: #14532d;
     --court-line: #0b3319;
     --ink: #1c2b23;
     --paper: #f6f7f1;
     --card: #ffffff;
     --pending: #ff8a3d;
     --verified: #2f7a4f;
+    --line: #e2e6dc;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);}
@@ -28,10 +29,11 @@
   header{
     background:var(--court);
     color:#eef7e9;
-    padding:18px 20px 16px;
+    padding:16px 20px 14px;
     border-bottom:6px solid var(--ball);
     position:relative;
     z-index:20;
+    flex:none;
   }
   header h1{
     margin:0 0 4px;
@@ -65,27 +67,97 @@
   }
   .stats b{color:var(--ball);}
 
+  /* 필터바 */
+  .filterbar{
+    flex:none;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:10px 14px;
+    display:flex;
+    gap:7px;
+    flex-wrap:wrap;
+    align-items:center;
+    position:relative;
+    z-index:19;
+  }
+  .filterbar select{
+    font-size:12.5px;
+    padding:7px 9px;
+    border-radius:9px;
+    border:1.5px solid var(--line);
+    font-family:inherit;
+    background:#fff;
+    color:var(--ink);
+    max-width:120px;
+  }
+  .filterbar .resetBtn{
+    font-size:12px;
+    padding:7px 11px;
+    border-radius:9px;
+    background:#eef1ea;
+    color:var(--ink);
+    font-weight:600;
+    border:none;
+    cursor:pointer;
+  }
+  .filterbar .count{
+    margin-left:auto;
+    font-size:12px;
+    color:#5c6c60;
+    white-space:nowrap;
+  }
+  .filterbar .count b{color:var(--court);}
+
+  /* 지도 영역 */
+  .mapWrap{position:relative;height:40vh;min-height:220px;flex:none;}
   #map{position:absolute;top:0;left:0;right:0;bottom:0;}
 
   .hint{
     position:absolute;
     left:50%;
-    bottom:18px;
+    bottom:14px;
     transform:translateX(-50%);
     background:var(--ink);
     color:#fff;
-    padding:9px 16px;
+    padding:8px 14px;
     border-radius:999px;
-    font-size:13px;
+    font-size:12.5px;
     box-shadow:0 6px 20px rgba(0,0,0,0.25);
     z-index:15;
     display:flex;
     align-items:center;
     gap:8px;
-    max-width:88%;
+    max-width:90%;
     text-align:center;
   }
   .hint .dot{width:8px;height:8px;border-radius:50%;background:var(--ball);flex:none;}
+
+  /* 목록 영역 */
+  .listWrap{
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+    background:var(--paper);
+    padding:12px 14px 28px;
+  }
+  .listEmpty{
+    text-align:center;color:#8a9a8f;font-size:13px;padding:30px 0;
+  }
+  .courtCard{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:8px;
+    cursor:pointer;
+  }
+  .courtCard:active{background:#f2f5ee;}
+  .courtCard .ctitle{
+    font-weight:700;font-size:14px;margin-bottom:4px;
+    display:flex;justify-content:space-between;gap:8px;align-items:flex-start;
+  }
+  .courtCard .cmeta{font-size:12.5px;color:#5c6c60;}
+  .courtCard .cregion{font-size:11.5px;color:#8a9a8f;margin-top:3px;}
 
   /* 모달 */
   .overlay{
@@ -103,6 +175,8 @@
     border-radius:16px;
     padding:20px;
     box-shadow:0 20px 50px rgba(0,0,0,0.3);
+    max-height:88vh;
+    overflow-y:auto;
   }
   .modal h2{
     margin:0 0 4px;
@@ -120,7 +194,7 @@
   }
   .field input, .field textarea, .field select{
     width:100%;
-    border:1.5px solid #dfe4d9;
+    border:1.5px solid var(--line);
     border-radius:10px;
     padding:9px 11px;
     font-size:14px;
@@ -162,15 +236,10 @@
     font-weight:700;
     padding:2px 7px;
     border-radius:999px;
-    margin-top:4px;
+    white-space:nowrap;
   }
   .badge.verified{background:#e3f3e6;color:var(--verified);}
   .badge.pending{background:#ffe9d6;color:var(--pending);}
-
-  .loading{
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    z-index:5;font-size:13px;color:#8a9a8f;
-  }
 </style>
 </head>
 <body>
@@ -184,9 +253,53 @@
     </div>
   </header>
 
-  <div style="position:relative;flex:1;min-height:0;">
+  <div class="filterbar">
+    <select id="filterSido" onchange="onSidoChange()">
+      <option value="">시/도 전체</option>
+      <option value="서울">서울</option>
+      <option value="부산">부산</option>
+      <option value="대구">대구</option>
+      <option value="인천">인천</option>
+      <option value="광주">광주</option>
+      <option value="대전">대전</option>
+      <option value="울산">울산</option>
+      <option value="세종">세종</option>
+      <option value="경기">경기</option>
+      <option value="강원">강원</option>
+      <option value="충북">충북</option>
+      <option value="충남">충남</option>
+      <option value="전북">전북</option>
+      <option value="전남">전남</option>
+      <option value="경북">경북</option>
+      <option value="경남">경남</option>
+      <option value="제주">제주</option>
+    </select>
+    <select id="filterSigungu" onchange="applyFilters()">
+      <option value="">시/군/구 전체</option>
+    </select>
+    <select id="filterType" onchange="applyFilters()">
+      <option value="">실내/실외 전체</option>
+      <option value="실내">실내</option>
+      <option value="실외">실외</option>
+    </select>
+    <select id="filterAccess" onchange="applyFilters()">
+      <option value="">이용방식 전체</option>
+      <option value="무료개방">무료개방</option>
+      <option value="예약필요">예약필요</option>
+      <option value="회원전용">회원전용</option>
+      <option value="모름">모름</option>
+    </select>
+    <button class="resetBtn" onclick="resetFilters()">초기화</button>
+    <span class="count"><b id="filterCount">0</b>곳 표시 중</span>
+  </div>
+
+  <div class="mapWrap">
     <div id="map"></div>
     <div class="hint"><span class="dot"></span>지도를 탭하면 코트를 등록할 수 있어요</div>
+  </div>
+
+  <div class="listWrap">
+    <div id="courtList"></div>
   </div>
 </div>
 
@@ -198,6 +311,34 @@
     <div class="field">
       <label>코트 이름 / 장소명</label>
       <input id="fName" type="text" placeholder="예: OO초등학교 다목적체육관" />
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>시/도</label>
+        <select id="fSido">
+          <option value="서울">서울</option>
+          <option value="부산">부산</option>
+          <option value="대구">대구</option>
+          <option value="인천">인천</option>
+          <option value="광주">광주</option>
+          <option value="대전">대전</option>
+          <option value="울산">울산</option>
+          <option value="세종">세종</option>
+          <option value="경기">경기</option>
+          <option value="강원">강원</option>
+          <option value="충북">충북</option>
+          <option value="충남">충남</option>
+          <option value="전북">전북</option>
+          <option value="전남">전남</option>
+          <option value="경북">경북</option>
+          <option value="경남">경남</option>
+          <option value="제주">제주</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>시/군/구</label>
+        <input id="fSigungu" type="text" placeholder="예: 고양시 일산동구" />
+      </div>
     </div>
     <div class="row">
       <div class="field">
@@ -247,21 +388,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 // ---------------------------------------------------------
-// 시드 데이터 (예시) — 실제 배포 전, 직접 확인한 코트로 교체하세요.
-// verified: true 인 항목만 "확인된 코트"로 취급합니다.
+// 코트 데이터는 이제 전부 Firestore(courts 컬렉션)에서 불러옵니다.
+// 처음 7건은 seed-once.html로 한 번만 넣어주세요 (verified:true로 등록됨).
 // ---------------------------------------------------------
-const SEED_COURTS = [
-  { name: "피클볼장 (고양시 피클볼협회 행주구장)", lat: 37.5941, lng: 126.8115, type: "실내", access: "예약필요", note: "경기도 고양시 덕양구 행주내동 733-6 · 주차장/샤워실/락커 있음 · 좌표는 근사치입니다, 정확한 위치는 네이버지도에서 확인하세요.", verified: true },
-  { name: "광나루 피클볼장", lat: 37.5445, lng: 127.1211, type: "실외", access: "예약필요", note: "서울 강동구 선사로 83-106(암사동), 광나루한강공원 안내센터 인근 · 코트 14면 · 06:00~22:00 · 평일 1시간 4,000원, 주말·공휴일 5,200원 · 서울시 공공서비스예약(선착순, 최대 3시간) · 좌표는 근사치입니다.", verified: true },
-  { name: "서울숲복합문화체육센터 3층 체육관", lat: 37.5443, lng: 127.0430, type: "실내", access: "회원전용", note: "서울 성동구 왕십리로11길 19 · 동호회 오픈플레이 매주 일요일 15:00~17:00, 무료레슨 30분 포함, 참가비 별도 · 동호회 대관 형태라 일정은 유동적일 수 있어요, 참가 전 확인 필요.", verified: true },
-  { name: "코트원피클볼", lat: 37.6608, lng: 126.7473, type: "실내", access: "예약필요", note: "경기도 고양시 일산동구 장항로 62 A동 · 좌표는 근사치입니다, 정확한 위치는 네이버지도에서 확인하세요.", verified: true },
-  { name: "엠무브 롯데 기흥점", lat: 37.2749, lng: 127.1136, type: "실내", access: "예약필요", note: "경기도 용인시 기흥구 신고매로 124 2층, 롯데프리미엄아울렛 기흥점 내 · 하드코트 6면 · 좌표는 근사치입니다.", verified: true },
-  { name: "피클볼 클럽 520", lat: 37.5934, lng: 127.0574, type: "실내", access: "회원전용", note: "서울 동대문구 한천로 247 휘경여자고등학교 4층 체육관 · 오픈플레이 방식, 랜덤 매칭 · 좌표는 근사치입니다.", verified: true },
-  { name: "오크밸리 피클볼장", lat: 37.4113, lng: 127.9367, type: "실외", access: "예약필요", note: "강원 원주시 지정면 오크밸리1길 66, 오크밸리 리조트 내 · 좌표는 근사치입니다.", verified: true }
-];
 
 let map, lastClick = null;
 let markersLayer;
+let allCourts = [];
+let courtMarkers = {};
 
 function initMap(){
   map = L.map('map', { zoomControl: true }).setView([37.5665, 126.9780], 12);
@@ -277,6 +411,7 @@ function initMap(){
     document.getElementById('coordLabel').textContent =
       `위치: ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
     document.getElementById('fName').value = '';
+    document.getElementById('fSigungu').value = '';
     document.getElementById('fNote').value = '';
     document.getElementById('formErr').style.display = 'none';
     document.getElementById('overlay').classList.add('show');
@@ -307,10 +442,12 @@ function addMarker(court){
   marker.bindPopup(
     `<b>${escapeHtml(court.name)}</b><br>` +
     `${court.type} · ${court.access}<br>` +
+    `${escapeHtml(court.sido || '')} ${escapeHtml(court.sigungu || '')}<br>` +
     `${court.note ? escapeHtml(court.note) + '<br>' : ''}` +
     badge
   );
   marker.addTo(markersLayer);
+  return marker;
 }
 
 function escapeHtml(str){
@@ -320,30 +457,105 @@ function escapeHtml(str){
 }
 
 async function loadAllCourts(){
-  markersLayer.clearLayers();
+  allCourts = [];
 
-  // 시드 데이터
-  SEED_COURTS.forEach(addMarker);
-  let verifiedCount = SEED_COURTS.length;
-  let pendingCount = 0;
-
-  // 저장된 제보 데이터 (Firestore, 모든 사용자 공유)
   try{
     const snapshot = await db.collection('courts').get();
     snapshot.forEach(doc => {
-      addMarker(doc.data());
-      pendingCount++;
+      allCourts.push({ ...doc.data(), _id: doc.id });
     });
   }catch(err){
-    console.error('제보 목록 불러오기 실패:', err);
+    console.error('코트 목록 불러오기 실패:', err);
   }
 
-  document.getElementById('countVerified').textContent = verifiedCount;
-  document.getElementById('countPending').textContent = pendingCount;
+  document.getElementById('countVerified').textContent = allCourts.filter(c => c.verified).length;
+  document.getElementById('countPending').textContent = allCourts.filter(c => !c.verified).length;
+
+  updateSigunguOptions();
+  applyFilters();
+}
+
+function onSidoChange(){
+  updateSigunguOptions();
+  applyFilters();
+}
+
+function updateSigunguOptions(){
+  const sido = document.getElementById('filterSido').value;
+  const sel = document.getElementById('filterSigungu');
+  const prev = sel.value;
+  const pool = allCourts.filter(c => !sido || c.sido === sido);
+  const uniq = Array.from(new Set(pool.map(c => c.sigungu).filter(Boolean))).sort();
+  sel.innerHTML = '<option value="">시/군/구 전체</option>' +
+    uniq.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  if(uniq.includes(prev)) sel.value = prev;
+}
+
+function resetFilters(){
+  document.getElementById('filterSido').value = '';
+  document.getElementById('filterType').value = '';
+  document.getElementById('filterAccess').value = '';
+  updateSigunguOptions();
+  document.getElementById('filterSigungu').value = '';
+  applyFilters();
+}
+
+function applyFilters(){
+  const sido = document.getElementById('filterSido').value;
+  const sigungu = document.getElementById('filterSigungu').value;
+  const type = document.getElementById('filterType').value;
+  const access = document.getElementById('filterAccess').value;
+
+  const filtered = allCourts.filter(c =>
+    (!sido || c.sido === sido) &&
+    (!sigungu || c.sigungu === sigungu) &&
+    (!type || c.type === type) &&
+    (!access || c.access === access)
+  );
+
+  renderMarkersAndList(filtered);
+}
+
+function renderMarkersAndList(filtered){
+  markersLayer.clearLayers();
+  courtMarkers = {};
+
+  document.getElementById('filterCount').textContent = filtered.length;
+
+  const listEl = document.getElementById('courtList');
+  listEl.innerHTML = '';
+
+  if(filtered.length === 0){
+    listEl.innerHTML = '<div class="listEmpty">조건에 맞는 코트가 없어요.</div>';
+    return;
+  }
+
+  filtered.forEach(court => {
+    const marker = addMarker(court);
+    courtMarkers[court._id] = marker;
+
+    const card = document.createElement('div');
+    card.className = 'courtCard';
+    const badge = court.verified
+      ? '<span class="badge verified">확인됨</span>'
+      : '<span class="badge pending">제보됨</span>';
+    card.innerHTML =
+      `<div class="ctitle"><span>${escapeHtml(court.name)}</span>${badge}</div>` +
+      `<div class="cmeta">${court.type} · ${court.access}</div>` +
+      `<div class="cregion">${escapeHtml(court.sido || '')} ${escapeHtml(court.sigungu || '')}</div>`;
+    card.onclick = function(){
+      map.setView([court.lat, court.lng], 16);
+      const m = courtMarkers[court._id];
+      if(m) m.openPopup();
+    };
+    listEl.appendChild(card);
+  });
 }
 
 async function submitCourt(){
   const name = document.getElementById('fName').value.trim();
+  const sido = document.getElementById('fSido').value;
+  const sigungu = document.getElementById('fSigungu').value.trim();
   const type = document.getElementById('fType').value;
   const access = document.getElementById('fAccess').value;
   const note = document.getElementById('fNote').value.trim();
@@ -357,7 +569,7 @@ async function submitCourt(){
   }
 
   const court = {
-    name, type, access, note,
+    name, sido, sigungu, type, access, note,
     lat: lastClick.lat,
     lng: lastClick.lng,
     verified: false,
@@ -370,9 +582,11 @@ async function submitCourt(){
       alert('저장에 실패했어요. 다시 시도해주세요.');
       return;
     }
-    addMarker(court);
+    allCourts.push({ ...court, _id: result.id });
     document.getElementById('countPending').textContent =
       parseInt(document.getElementById('countPending').textContent || '0', 10) + 1;
+    updateSigunguOptions();
+    applyFilters();
     closeModal();
   }catch(err){
     console.error(err);
