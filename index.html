@@ -119,6 +119,24 @@
   }
   .filterbar .count b{color:var(--court);}
 
+  .legend{
+    flex:none;
+    display:flex;
+    gap:16px;
+    align-items:center;
+    padding:7px 14px;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    font-size:11.5px;
+    color:#5c6c60;
+  }
+  .legendDot{
+    width:10px;height:10px;border-radius:50%;
+    display:inline-block;margin-right:5px;vertical-align:middle;
+  }
+  .legendDot.verified{background:var(--verified);}
+  .legendDot.pending{background:var(--pending);}
+
   /* 지도 영역 */
   .mapWrap{position:relative;height:40vh;min-height:220px;flex:none;}
   #map{position:absolute;top:0;left:0;right:0;bottom:0;}
@@ -315,6 +333,11 @@
     </select>
     <button class="resetBtn" onclick="resetFilters()">초기화</button>
     <span class="count"><b id="filterCount">0</b>곳 표시 중</span>
+  </div>
+
+  <div class="legend">
+    <span><span class="legendDot verified"></span>확인된 코트</span>
+    <span><span class="legendDot pending"></span>제보된 코트</span>
   </div>
 
   <div class="mapWrap">
