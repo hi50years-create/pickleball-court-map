@@ -566,7 +566,7 @@ function applyFilters(){
     (!sigungu || c.sigungu === sigungu) &&
     (!type || c.type === type) &&
     (!access || c.access === access)
-  );
+  ).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
 
   currentPage = 1;
   renderMarkersAndList(filtered);
