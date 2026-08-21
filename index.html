@@ -288,8 +288,7 @@
     <h1><span class="dot"></span>우리 동네 피클볼 코트</h1>
     <p>지도를 눌러서 알고 있는 코트를 등록해보세요. 다른 사람이 등록한 코트도 함께 보여요.</p>
     <div class="stats">
-      <span>확인된 코트 <b id="countVerified">-</b></span>
-      <span>제보된 코트 <b id="countPending">-</b></span>
+      <span>총 등록 코트 <b id="countTotal">-</b>곳</span>
     </div>
   </header>
 
@@ -546,8 +545,7 @@ async function loadAllCourts(){
     console.error('코트 목록 불러오기 실패:', err);
   }
 
-  document.getElementById('countVerified').textContent = allCourts.filter(c => c.verified).length;
-  document.getElementById('countPending').textContent = allCourts.filter(c => !c.verified).length;
+  document.getElementById('countTotal').textContent = allCourts.length;
 
   updateSigunguOptions();
   applyFilters();
@@ -717,8 +715,8 @@ async function submitCourt(){
       return;
     }
     allCourts.push({ ...court, _id: result.id });
-    document.getElementById('countPending').textContent =
-      parseInt(document.getElementById('countPending').textContent || '0', 10) + 1;
+    document.getElementById('countTotal').textContent =
+      parseInt(document.getElementById('countTotal').textContent || '0', 10) + 1;
     updateSigunguOptions();
     applyFilters();
     closeModal();
