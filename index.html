@@ -6,6 +6,7 @@
 <title>우리 동네 피클볼 코트</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=9c376c904f2eee8fad8f79bc26a2502f&libraries=services&autoload=false"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
@@ -66,6 +67,16 @@
     border:1px solid rgba(255,255,255,0.15);
   }
   .stats b{color:var(--ball);}
+
+  .notice{
+    flex:none;
+    background:#fff8e8;
+    color:#8a5a1f;
+    font-size:12px;
+    padding:8px 14px;
+    border-bottom:1px solid #f0dcae;
+    text-align:center;
+  }
 
   /* 필터바 */
   .filterbar{
@@ -158,6 +169,17 @@
   }
   .courtCard .cmeta{font-size:12.5px;color:#5c6c60;}
   .courtCard .cregion{font-size:11.5px;color:#8a9a8f;margin-top:3px;}
+
+  .pager{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    margin-top:10px;padding-top:6px;
+  }
+  .pageBtn{
+    background:#fff;border:1.5px solid var(--line);color:var(--ink);
+    font-size:13px;font-weight:600;padding:7px 14px;border-radius:9px;cursor:pointer;
+  }
+  .pageBtn:disabled{opacity:0.4;cursor:not-allowed;}
+  .pageInfo{font-size:12.5px;color:#5c6c60;min-width:44px;text-align:center;}
 
   /* 모달 */
   .overlay{
@@ -253,6 +275,8 @@
     </div>
   </header>
 
+  <div class="notice">📍 좌표는 대략적인 위치예요. 정확한 위치는 코트명으로 직접 검색해서 확인해주세요.</div>
+
   <div class="filterbar">
     <select id="filterSido" onchange="onSidoChange()">
       <option value="">시/도 전체</option>
@@ -311,6 +335,10 @@
     <div class="field">
       <label>코트 이름 / 장소명</label>
       <input id="fName" type="text" placeholder="예: OO초등학교 다목적체육관" />
+    </div>
+    <div class="field">
+      <label>주소 (선택 — 입력하면 정확한 위치로 자동 보정돼요)</label>
+      <input id="fAddress" type="text" placeholder="예: 경기도 고양시 일산동구 장항로 62" />
     </div>
     <div class="row">
       <div class="field">
@@ -396,6 +424,10 @@ let map, lastClick = null;
 let markersLayer;
 let allCourts = [];
 let courtMarkers = {};
+let currentFiltered = [];
+let currentPage = 1;
+const PAGE_SIZE = 7;
+let geocoder = null;
 
 function initMap(){
   map = L.map('map', { zoomControl: true }).setView([37.5665, 126.9780], 12);
@@ -406,11 +438,21 @@ function initMap(){
 
   markersLayer = L.layerGroup().addTo(map);
 
+  // 카카오는 지도 렌더링 없이 주소→좌표 변환(지오코더)만 사용
+  try{
+    kakao.maps.load(function(){
+      geocoder = new kakao.maps.services.Geocoder();
+    });
+  }catch(err){
+    console.warn('카카오 지오코더 로드 실패 — 주소 자동 보정 없이 진행됩니다.', err);
+  }
+
   map.on('click', function(e){
     lastClick = e.latlng;
     document.getElementById('coordLabel').textContent =
       `위치: ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
     document.getElementById('fName').value = '';
+    document.getElementById('fAddress').value = '';
     document.getElementById('fSigungu').value = '';
     document.getElementById('fNote').value = '';
     document.getElementById('formErr').style.display = 'none';
@@ -418,6 +460,19 @@ function initMap(){
   });
 
   loadAllCourts();
+}
+
+function geocodeAddress(address){
+  return new Promise((resolve) => {
+    if(!geocoder || !address){ resolve(null); return; }
+    geocoder.addressSearch(address, function(result, status){
+      if(status === kakao.maps.services.Status.OK && result.length){
+        resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) });
+      }else{
+        resolve(null);
+      }
+    });
+  });
 }
 
 function closeModal(){
@@ -513,27 +568,43 @@ function applyFilters(){
     (!access || c.access === access)
   );
 
+  currentPage = 1;
   renderMarkersAndList(filtered);
 }
 
 function renderMarkersAndList(filtered){
   markersLayer.clearLayers();
   courtMarkers = {};
+  currentFiltered = filtered;
 
   document.getElementById('filterCount').textContent = filtered.length;
 
+  // 지도에는 필터된 코트 전부 표시
+  filtered.forEach(court => {
+    const marker = addMarker(court);
+    courtMarkers[court._id] = marker;
+  });
+
+  renderListPage();
+}
+
+function renderListPage(){
   const listEl = document.getElementById('courtList');
   listEl.innerHTML = '';
 
-  if(filtered.length === 0){
+  if(currentFiltered.length === 0){
     listEl.innerHTML = '<div class="listEmpty">조건에 맞는 코트가 없어요.</div>';
     return;
   }
 
-  filtered.forEach(court => {
-    const marker = addMarker(court);
-    courtMarkers[court._id] = marker;
+  const totalPages = Math.max(1, Math.ceil(currentFiltered.length / PAGE_SIZE));
+  if(currentPage > totalPages) currentPage = totalPages;
+  if(currentPage < 1) currentPage = 1;
 
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = currentFiltered.slice(start, start + PAGE_SIZE);
+
+  pageItems.forEach(court => {
     const card = document.createElement('div');
     card.className = 'courtCard';
     const badge = court.verified
@@ -550,10 +621,29 @@ function renderMarkersAndList(filtered){
     };
     listEl.appendChild(card);
   });
+
+  if(totalPages > 1){
+    const pager = document.createElement('div');
+    pager.className = 'pager';
+    pager.innerHTML =
+      `<button class="pageBtn" id="pagePrev" ${currentPage === 1 ? 'disabled' : ''}>이전</button>` +
+      `<span class="pageInfo">${currentPage} / ${totalPages}</span>` +
+      `<button class="pageBtn" id="pageNext" ${currentPage === totalPages ? 'disabled' : ''}>다음</button>`;
+    listEl.appendChild(pager);
+    document.getElementById('pagePrev').onclick = function(){ changePage(-1); };
+    document.getElementById('pageNext').onclick = function(){ changePage(1); };
+  }
+}
+
+function changePage(delta){
+  currentPage += delta;
+  renderListPage();
+  document.querySelector('.listWrap').scrollTop = 0;
 }
 
 async function submitCourt(){
   const name = document.getElementById('fName').value.trim();
+  const address = document.getElementById('fAddress').value.trim();
   const sido = document.getElementById('fSido').value;
   const sigungu = document.getElementById('fSigungu').value.trim();
   const type = document.getElementById('fType').value;
@@ -568,10 +658,31 @@ async function submitCourt(){
     return;
   }
 
+  const submitBtn = document.querySelector('.btn-primary');
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+
+  let lat = lastClick.lat;
+  let lng = lastClick.lng;
+  let finalNote = note;
+
+  if(address){
+    submitBtn.textContent = '주소 확인 중...';
+    const geo = await geocodeAddress(address);
+    if(geo){
+      lat = geo.lat;
+      lng = geo.lng;
+      finalNote = note ? `${address} · ${note}` : address;
+    }else{
+      // 지오코딩 실패 시 지도에서 클릭한 위치를 그대로 사용
+      finalNote = note ? `${address} · ${note}` : address;
+    }
+  }
+
   const court = {
-    name, sido, sigungu, type, access, note,
-    lat: lastClick.lat,
-    lng: lastClick.lng,
+    name, sido, sigungu, type, access,
+    note: finalNote,
+    lat, lng,
     verified: false,
     createdAt: new Date().toISOString()
   };
@@ -591,6 +702,9 @@ async function submitCourt(){
   }catch(err){
     console.error(err);
     alert('저장 중 오류가 발생했어요.');
+  }finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
 }
 

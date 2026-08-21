@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>정밀 좌표 변환 및 등록/보정 (관리자용)</title>
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=9c376c904f2eee8fad8f79bc26a2502f&libraries=services&autoload=false"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+  body{font-family:-apple-system,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#1c2b23;}
+  button{background:#14532d;color:#fff;border:none;padding:14px 20px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;width:100%;}
+  button:disabled{background:#8a9a8f;cursor:not-allowed;}
+  #log{margin-top:20px;font-size:13px;line-height:1.8;white-space:pre-wrap;background:#f6f7f1;padding:14px;border-radius:10px;}
+  .warn{color:#c0392b;font-size:13px;margin-bottom:16px;}
+</style>
+</head>
+<body>
+<h2>13곳 정밀 좌표 변환 + 등록/보정</h2>
+<p class="warn">⚠️ 이름으로 기존 문서를 찾아서 있으면 update, 없으면 add 해요. 그래서 여러 번 눌러도 중복이 안 생겨요 (안전). 카카오 JS 키의 도메인 등록이 안 돼있으면 지오코딩이 실패해요 — 개발자센터에서 이 사이트 도메인이 등록됐는지 먼저 확인하세요.</p>
+<button id="btn" onclick="runGeocode()">13곳 정밀 좌표로 등록/보정하기</button>
+<div id="log"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD2eLraL0MDoZEVEXOY_nBIitu5AHysPUQ",
+  authDomain: "pickleball-court-map.firebaseapp.com",
+  projectId: "pickleball-court-map",
+  storageBucket: "pickleball-court-map.firebasestorage.app",
+  messagingSenderId: "119777831983",
+  appId: "1:119777831983:web:03317f33cc7169b65c2ada"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// address: 지오코딩용 주소 문자열. lat/lng은 지오코딩 실패시 쓸 대략치(fallback).
+const ITEMS = [
+  { name: "피클볼장 (고양시 피클볼협회 행주구장)", address: "경기도 고양시 덕양구 행주로83번길 3-26",
+    fallbackLat: 37.5878, fallbackLng: 126.8109, type: "실내", access: "예약필요", sido: "경기", sigungu: "고양시 덕양구",
+    note: "경기도 고양시 덕양구 행주로83번길 3-26 (행주내동 734-1) · 주차장/샤워실/락커 있음", verified: true },
+  { name: "광나루 피클볼장", address: "서울 강동구 암사동 624-3",
+    fallbackLat: 37.5445, fallbackLng: 127.1211, type: "실외", access: "예약필요", sido: "서울", sigungu: "강동구",
+    note: "서울 강동구 암사동 624-3, 광나루한강공원 내 · 코트 14면 · 06:00~22:00 · 평일 1시간 4,000원, 주말·공휴일 5,200원 · 서울시 공공서비스예약(선착순, 최대 3시간)", verified: true },
+  { name: "풍동야외피클볼장", address: "경기도 고양시 일산동구 풍동 749",
+    fallbackLat: 37.6640, fallbackLng: 126.7970, type: "실외", access: "모름", sido: "경기", sigungu: "고양시 일산동구",
+    note: "경기도 고양시 일산동구 풍동 749", verified: true },
+  { name: "피클테니스", address: "서울특별시 관악구 남부순환로 1845",
+    fallbackLat: 37.4770, fallbackLng: 126.9530, type: "실내", access: "예약필요", sido: "서울", sigungu: "관악구",
+    note: "서울특별시 관악구 남부순환로 1845 지하층 B02호 (봉천동 1666-51) · 24시간 영업", verified: true },
+  { name: "피클볼하우스", address: "경기도 하남시 감일중앙로 89",
+    fallbackLat: 37.4790, fallbackLng: 127.1600, type: "실내", access: "모름", sido: "경기", sigungu: "하남시",
+    note: "경기도 하남시 감일중앙로 89 4층 403호 (감일동 511-1) · 24시간 영업", verified: true },
+  { name: "410피클볼", address: "경기 남양주시 진건읍 진관리 410-3",
+    fallbackLat: 37.6540, fallbackLng: 127.1760, type: "실내", access: "예약필요", sido: "경기", sigungu: "남양주시",
+    note: "경기도 남양주시 진건읍 진관리 410-3 주건축물 제1동 · 24시간 영업", verified: true },
+  { name: "피클몬스터", address: "경기도 시흥시 능곡로76번길 10",
+    fallbackLat: 37.4570, fallbackLng: 126.8980, type: "실내", access: "예약필요", sido: "경기", sigungu: "시흥시",
+    note: "경기도 시흥시 능곡로76번길 10 나동 (화정동 658-1) · 24시간 영업", verified: true },
+  { name: "피크랠리 피클볼 라운지", address: "경기도 오산시 외삼미로 149-17",
+    fallbackLat: 37.1540, fallbackLng: 127.0710, type: "실내", access: "예약필요", sido: "경기", sigungu: "오산시",
+    note: "경기도 오산시 외삼미로 149-17 1층 (외삼미동 149) · 24시간 영업", verified: true },
+  { name: "피클크루", address: "경기도 화성시 동탄구 장지남길3번길 6-5",
+    fallbackLat: 37.2010, fallbackLng: 127.0730, type: "실내", access: "모름", sido: "경기", sigungu: "화성시 동탄구",
+    note: "경기도 화성시 동탄구 장지남길3번길 6-5 (장지동 514-4) · 24시간 영업", verified: true },
+  { name: "구니카", address: "경기도 광명시 하안로 60",
+    fallbackLat: 37.4190, fallbackLng: 126.8720, type: "실내", access: "예약필요", sido: "경기", sigungu: "광명시",
+    note: "경기도 광명시 하안로 60 A동 207호 (소하동 1345) · 24시간 영업", verified: true },
+  { name: "피클러", address: "경기도 화성시 병점구 안녕남로82번길 14",
+    fallbackLat: 37.2065, fallbackLng: 126.9975, type: "실내", access: "모름", sido: "경기", sigungu: "화성시 병점구",
+    note: "경기도 화성시 병점구 안녕남로82번길 14 (안녕동 178-57) · 24시간 영업", verified: true },
+  { name: "이테니스&피클볼 평택점", address: "경기도 평택시 비전4로 39",
+    fallbackLat: 36.9975, fallbackLng: 127.0925, type: "실내", access: "모름", sido: "경기", sigungu: "평택시",
+    note: "경기도 평택시 비전4로 39 403호 (비전동 1096-2) · 24시간 영업, 테니스 겸용", verified: true },
+  { name: "흥덕피클볼 전용구장", address: "충북 청주시 흥덕구 운천동 662-1",
+    fallbackLat: 36.6390, fallbackLng: 127.4650, type: "실외", access: "모름", sido: "충북", sigungu: "청주시 흥덕구",
+    note: "충북 청주시 흥덕구 운천동 662-1", verified: true }
+];
+
+function geocodeOne(geocoder, address){
+  return new Promise((resolve) => {
+    geocoder.addressSearch(address, function(result, status){
+      if(status === kakao.maps.services.Status.OK && result.length){
+        resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x) });
+      }else{
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function runGeocode(){
+  const btn = document.getElementById('btn');
+  const log = document.getElementById('log');
+  btn.disabled = true;
+  btn.textContent = '처리 중...';
+  log.textContent = '';
+
+  kakao.maps.load(async function(){
+    const geocoder = new kakao.maps.services.Geocoder();
+
+    const snapshot = await db.collection('courts').get();
+    const existingByName = {};
+    snapshot.forEach(doc => { existingByName[doc.data().name] = doc; });
+
+    let geocoded = 0, fallback = 0, updated = 0, added = 0;
+
+    for(const item of ITEMS){
+      const coord = await geocodeOne(geocoder, item.address);
+      const lat = coord ? coord.lat : item.fallbackLat;
+      const lng = coord ? coord.lng : item.fallbackLng;
+      if(coord){ geocoded++; } else { fallback++; }
+
+      const payload = {
+        name: item.name, type: item.type, access: item.access,
+        sido: item.sido, sigungu: item.sigungu, note: item.note,
+        verified: item.verified, lat, lng
+      };
+
+      const existing = existingByName[item.name];
+      try{
+        if(existing){
+          await existing.ref.update(payload);
+          updated++;
+          log.textContent += `🔄 ${item.name} 보정 (${coord ? '정밀좌표' : '대략좌표 유지'})\n`;
+        }else{
+          await db.collection('courts').add({ ...payload, createdAt: new Date().toISOString() });
+          added++;
+          log.textContent += `➕ ${item.name} 신규 등록 (${coord ? '정밀좌표' : '대략좌표'})\n`;
+        }
+      }catch(err){
+        log.textContent += `❌ ${item.name} 실패: ${err.message}\n`;
+      }
+    }
+
+    btn.textContent = `완료 (정밀좌표 ${geocoded} / 대략좌표 ${fallback})`;
+    log.textContent += `\n총 ${updated}건 보정, ${added}건 신규 등록. (지오코딩 성공 ${geocoded}건, 실패해서 대략좌표 쓴 곳 ${fallback}건)`;
+    btn.disabled = false;
+  });
+}
+</script>
+</body>
+</html>
