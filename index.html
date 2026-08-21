@@ -6,6 +6,8 @@
 <title>우리 동네 피클볼 코트</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --ball: #d7f34c;      /* 피클볼 공 색 */
@@ -63,7 +65,7 @@
   }
   .stats b{color:var(--ball);}
 
-  #map{flex:1;min-height:0;}
+  #map{position:absolute;top:0;left:0;right:0;bottom:0;}
 
   .hint{
     position:absolute;
@@ -231,6 +233,20 @@
 
 <script>
 // ---------------------------------------------------------
+// Firebase 설정 — 제보(크라우드소싱) 데이터 저장용
+// ---------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyD2eLraL0MDoZEVEXOY_nBIitu5AHysPUQ",
+  authDomain: "pickleball-court-map.firebaseapp.com",
+  projectId: "pickleball-court-map",
+  storageBucket: "pickleball-court-map.firebasestorage.app",
+  messagingSenderId: "119777831983",
+  appId: "1:119777831983:web:03317f33cc7169b65c2ada"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ---------------------------------------------------------
 // 시드 데이터 (예시) — 실제 배포 전, 직접 확인한 코트로 교체하세요.
 // verified: true 인 항목만 "확인된 코트"로 취급합니다.
 // ---------------------------------------------------------
@@ -311,23 +327,13 @@ async function loadAllCourts(){
   let verifiedCount = SEED_COURTS.length;
   let pendingCount = 0;
 
-  // 저장된 제보 데이터 (모든 사용자 공유)
+  // 저장된 제보 데이터 (Firestore, 모든 사용자 공유)
   try{
-    const list = await window.storage.list('court:', true);
-    if(list && list.keys && list.keys.length){
-      for(const key of list.keys){
-        try{
-          const res = await window.storage.get(key, true);
-          if(res && res.value){
-            const court = JSON.parse(res.value);
-            addMarker(court);
-            pendingCount++;
-          }
-        }catch(err){
-          console.error('코트 불러오기 실패:', key, err);
-        }
-      }
-    }
+    const snapshot = await db.collection('courts').get();
+    snapshot.forEach(doc => {
+      addMarker(doc.data());
+      pendingCount++;
+    });
   }catch(err){
     console.error('제보 목록 불러오기 실패:', err);
   }
@@ -359,8 +365,7 @@ async function submitCourt(){
   };
 
   try{
-    const key = 'court:' + Date.now();
-    const result = await window.storage.set(key, JSON.stringify(court), true);
+    const result = await db.collection('courts').add(court);
     if(!result){
       alert('저장에 실패했어요. 다시 시도해주세요.');
       return;
